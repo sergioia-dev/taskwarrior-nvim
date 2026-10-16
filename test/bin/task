@@ -1,0 +1,42 @@
+#!/bin/sh
+# Stand-in for the real `task` binary, used by the headless test suite.
+#
+# Every invocation is recorded so the specs can assert on the exact argv and
+# stdin the plugin produced:
+#
+#   TW_STUB_LOG    file the argv/stdin records are appended to  (required)
+#   TW_STUB_STDIN  file the stdin read from the process is written to
+#   TW_STUB_OUT    stdout text, `%b` escapes allowed (default: a short report)
+#   TW_STUB_ERR    stderr text, `%b` escapes allowed
+#   TW_STUB_EXIT   exit status (default 0)
+#
+# `task show` prints report definitions, which is what the plugin discovers its
+# report names from.
+
+if [ -n "${TW_STUB_LOG:-}" ]; then
+	printf 'ARGV\t%s\n' "$*" >>"$TW_STUB_LOG"
+fi
+if [ -n "${TW_STUB_STDIN:-}" ]; then
+	cat >"$TW_STUB_STDIN" 2>/dev/null || true
+fi
+
+if [ "${1:-}" = "show" ]; then
+	printf '%s\n' \
+		"report.next.filter                 status:pending" \
+		"report.all.filter                  " \
+		"report.custom.filter               +custom" \
+		"report.urgent.filter               urgency \> 10"
+	exit "${TW_STUB_EXIT:-0}"
+fi
+
+printf '%b' "${TW_STUB_OUT-ID AGE DESCRIPTION
+1 buy milk
+2 write tests
+}"
+if [ -n "${TW_STUB_ERR:-}" ]; then
+	printf '%b' "$TW_STUB_ERR" >&2
+fi
+if [ -n "${TW_STUB_STDIN:-}" ] && [ "$(cat "$TW_STUB_STDIN" 2>/dev/null)" = "yes" ]; then
+	exit 0
+fi
+exit "${TW_STUB_EXIT:-0}"
