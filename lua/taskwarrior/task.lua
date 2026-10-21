@@ -27,14 +27,30 @@ function M.notify_missing()
 	)
 end
 
---- `"yes\n"` for verbs listed in `auto_yes`, `false` (closed stdin, immediate
---- EOF) for everything else. Interactive prompts cannot be served headless, so
---- only the verbs the user opted into get an answer.
+--- How many tasks the command targets: the number of bare numeric IDs in
+--- `args`, and at least one so a filter-only command still gets an answer.
+---
+--- Taskwarrior asks one yes/no question per task it is about to change, so a
+--- `:Task 1,2,3 delete` (expanded to `task 1 2 3 delete`) needs three answers.
+--- Over-answering is harmless: it stops reading stdin once it is done.
+function M.target_count(args)
+	local count = 0
+	for _, arg in ipairs(args) do
+		if arg:match("^%d+$") then
+			count = count + 1
+		end
+	end
+	return math.max(1, count)
+end
+
+--- `"yes\n"` per targeted task for verbs listed in `auto_yes`, `false` (closed
+--- stdin, immediate EOF) for everything else. Interactive prompts cannot be
+--- served headless, so only the verbs the user opted into get an answer.
 function M.stdin_for(args)
 	local auto = config.options.auto_yes
 	for _, verb in ipairs(auto or {}) do
 		if args[1] == verb then
-			return "yes\n"
+			return string.rep("yes\n", M.target_count(args))
 		end
 	end
 	return false
@@ -203,21 +219,23 @@ local function confirmation_question(result)
 	end
 	return nil
 end
---- Remove taskwarrior's `(yes/no)` prompt prefix from `text` (the start of the
---- prompt's line through the closing \")\"); the message that follows the answer
---- is kept. Returns `text` unchanged when there is no prompt.
+--- Remove taskwarrior's `(yes/no)` prompts from `text` (the start of each
+--- prompt's line through the closing ")"), one per task it asked about; the
+--- messages that follow each answer are kept. Returns `text` unchanged when
+--- there is no prompt.
 local function strip_yesno(text)
 	if text == nil or text == "" then
 		return text
 	end
-	local s = text:find("(yes/no)", 1, true)
-	if not s then
-		return text
+	local kept = {}
+	for _, line in ipairs(vim.split(text, "\n", { plain = true })) do
+		local s = line:find("(yes/no)", 1, true)
+		if s then
+			line = line:sub(s + 8):gsub("^%s+", "")
+		end
+		kept[#kept + 1] = line
 	end
-	local nl = text:sub(1, s):match(".*()\n")
-	local line_start = nl and (nl + 1) or 1
-	local rest = text:sub(s + 8):gsub("^%s+", "")
-	return text:sub(1, line_start - 1) .. rest
+	return table.concat(kept, "\n")
 end
 
 --- Run a mutating command headless and notify its result. A command that
@@ -237,7 +255,7 @@ function M.run(args, opts)
 			-- The user agreed, so only the outcome of the confirmed run is
 			-- announced. A refused or cancelled question reports the original
 			-- "prevented from running" result instead.
-			spawn(argv, "yes\n", function(confirmed)
+			spawn(argv, string.rep("yes\n", M.target_count(args)), function(confirmed)
 				local cleaned = vim.tbl_extend("force", {}, confirmed)
 				cleaned.stdout = strip_yesno(confirmed.stdout)
 				cleaned.stderr = strip_yesno(confirmed.stderr)

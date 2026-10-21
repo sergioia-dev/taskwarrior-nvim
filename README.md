@@ -64,6 +64,34 @@ Repeat the same view to toggle the split closed; a different report re-renders
 in place, without opening a second window. Completion offers your report names
 and the mutating verbs.
 
+## Targeting several tasks
+
+Separate numeric IDs with commas to act on all of them at once:
+
+```vim
+:Task 1,2,3 delete
+```
+
+The plugin expands the list into taskwarrior's native space-separated form and
+runs `task 1 2 3 delete`, so the three tasks are deleted after a single
+confirmation instead of one command per ID. Every ID-based verb works this way
+(`delete`, `done`, `start`, `stop`, `modify`, `duplicate`, `purge`, `edit`,
+`annotate`, `append`, `prepend`, `denotate`).
+
+Only comma-separated *numeric* ID lists are expanded. A single id, a native
+range (`:Task 1-3 done`), a uuid and a filter (`:Task +work done`) all pass
+through exactly as typed, and the two describe-only verbs (`add`, `log`) are
+never expanded: their argument is free text that may well contain commas.
+
+The test is deliberately narrow and dumb — is this token nothing but digits and
+commas? — so it also fires on a numeric list that was meant as text.
+`:Task 1,2 annotate 2024,2025` runs `task 1 2 annotate 2024 2025`, and the
+annotation ends up as two words. Quoting the argument stops the split, because
+`"2024,2025"` no longer looks numeric, but the quotes are not stripped either,
+so they land in the annotation too. When a verb's argument really is a bare
+number list, add that one from taskwarrior itself (`task 1,2 annotate …` in a
+shell, where the comma means nothing) rather than through `:Task`.
+
 ## Adding a selection
 
 Select lines in any buffer and run `:'<,'>Task add` to turn each one into a

@@ -375,6 +375,75 @@ task_module.confirm = default_confirm
 vim.env.TW_STUB_EXIT = "0"
 vim.env.TW_STUB_ERR = ""
 
+-- 13c ─ a comma-separated ID list is expanded into taskwarrior's own
+-- space-separated form, so one command (and one confirmation) targets every ID.
+local multi_question = nil
+task_module.confirm = function(question)
+	multi_question = question
+	return true
+end
+reset_stub()
+vim.env.TW_STUB_EXIT = "0"
+vim.env.TW_STUB_ERR = ""
+vim.env.TW_STUB_OUT = "Delete task 1 'a'? (yes/no) Deleting task 1 'a'.\n"
+	.. "Delete task 2 'b'? (yes/no) Deleting task 2 'b'.\n"
+	.. "Delete task 3 'c'? (yes/no) Deleting task 3 'c'.\n"
+	.. "Deleted 3 tasks.\n"
+vim.cmd("Task 1,2,3 delete")
+check("a comma list of IDs completes", notified(function(entry)
+	return entry.msg:find("Deleted 3 tasks.", 1, true) ~= nil
+end))
+eq("the comma list runs as taskwarrior's own argv", stub_argv()[#stub_argv()], "1 2 3 delete")
+eq("each ID is its own argument", vim.inspect(stub_invocations()[#stub_invocations()]),
+	vim.inspect({ "1", "2", "3", "delete" }))
+check("the question is asked once, for the whole command",
+	multi_question ~= nil and multi_question:match("^task 1 2 3 delete\n") ~= nil, multi_question)
+eq("one answer per targeted task reaches stdin", raw_stdin(), "yes\nyes\nyes\n")
+check("the confirmed run covers every task", #stub_argv() == 2, vim.inspect(stub_argv()))
+local multi_note = last_notification()
+check("the multi-task notification drops all prompts",
+	multi_note ~= nil
+		and multi_note.msg:find("(yes/no)", 1, true) == nil
+		and multi_note.msg:find("Deleting task 1 'a'.", 1, true) ~= nil
+		and multi_note.msg:find("Deleting task 3 'c'.", 1, true) ~= nil
+		and multi_note.msg:find("Deleted 3 tasks.", 1, true) ~= nil, multi_note and multi_note.msg)
+
+-- 13d ─ a comma list works for verbs that need no confirmation.
+reset_stub()
+vim.env.TW_STUB_OUT = "Completed 3 tasks.\n"
+vim.cmd("Task 1,2,3 done")
+check("an unconfirmed comma list completes", notified(function(entry)
+	return entry.msg:find("Completed 3 tasks.", 1, true) ~= nil
+end))
+eq("the expanded done argv", stub_argv()[#stub_argv()], "1 2 3 done")
+eq("done got no stdin", raw_stdin(), "")
+
+-- 13e ─ `add`/`log` keep their description, commas and all.
+reset_stub()
+vim.env.TW_STUB_OUT = "Created 1 task.\n"
+vim.cmd("Task add 1,2,3")
+check("an add with commas completes", notified(function(entry)
+	return entry.msg:find("Created 1 task.", 1, true) ~= nil
+end))
+eq("a description is never expanded", stub_argv()[#stub_argv()], "add 1,2,3")
+eq("the description stays one argument", vim.inspect(stub_invocations()[#stub_invocations()]),
+	vim.inspect({ "add", "1,2,3" }))
+
+-- 13f ─ a single ID still asks (and answers) once.
+reset_stub()
+vim.env.TW_STUB_OUT = "Delete task 1 'a'? (yes/no) Deleting task 1 'a'.\nDeleted 1 task.\n"
+vim.cmd("Task 1 delete")
+check("a single-ID delete completes", notified(function(entry)
+	return entry.msg:find("Deleted 1 task.", 1, true) ~= nil
+end))
+eq("a single ID keeps its own argv", stub_argv()[#stub_argv()], "1 delete")
+eq("a single ID gets one answer", raw_stdin(), "yes\n")
+
+task_module.confirm = default_confirm
+vim.env.TW_STUB_OUT = nil
+vim.env.TW_STUB_ERR = ""
+vim.env.TW_STUB_EXIT = "0"
+
 -- 14 ─ `<range>Task add` adds one task per selected line.
 plugin.close()
 reset_stub()

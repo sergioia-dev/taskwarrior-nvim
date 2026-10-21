@@ -149,4 +149,28 @@ function M.reset()
 	discovered = nil
 end
 
+--- Verbs whose first argument is a free-text description, not a list of IDs.
+local FREE_TEXT = { add = true, log = true }
+
+--- Expand comma-separated ID lists into taskwarrior's space-separated form.
+---
+--- `{ "1,2,3", "delete" }` becomes `{ "1", "2", "3", "delete" }`, so one
+--- `:Task` command (and one confirmation) acts on every listed task. Only
+--- numeric lists are expanded: a single ID, a native range (`1-3`), a UUID or a
+--- filter passes through untouched, and `add`/`log` keep their description.
+function M.expand_id_lists(args)
+	local out = {}
+	local free_text = FREE_TEXT[args[1]] == true
+	for _, arg in ipairs(args) do
+		if not free_text and arg:find(",", 1, true) and arg:match("^%d[%d,]*%d$") then
+			for part in arg:gmatch("[^,]+") do
+				out[#out + 1] = part
+			end
+		else
+			out[#out + 1] = arg
+		end
+	end
+	return out
+end
+
 return M

@@ -126,6 +126,9 @@ end
 --- chains its commands one after the other.
 function M.run(args, opts)
 	opts = opts or {}
+	-- `:Task 1,2,3 delete` runs as `task 1 2 3 delete`. Every run command
+	-- funnels through here, so this is the one place the list is expanded.
+	args = dispatch.expand_id_lists(args)
 	if not task.exists() then
 		task.notify_missing()
 		return
