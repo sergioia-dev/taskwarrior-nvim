@@ -75,9 +75,20 @@ task — useful for pasting a list from a note or a chat:
 
 The selection is linewise: a characterwise selection contributes the whole
 lines it touches, never a substring. Each non-empty line becomes its own
-`task add` call, so `+project` and `tag:home` written in a line become
-as usual. Blank and whitespace-only lines are skipped; a selection with nothing
-else in it does nothing at all.
+`task add` call, split into words exactly like a typed `:Task add`, so
+attributes written on a line work as usual:
+
+```vim
+buy milk project:home +errand due:tomorrow
+```
+
+That line adds a task described `buy milk` in project `home`, tagged `errand`,
+due tomorrow. Splitting is what makes this work: Taskwarrior reads
+`project:home` as an attribute only when it arrives as its own argument, so a
+whole line handed over as one argument would keep it as description text. A
+quoted phrase on a line is therefore not special — write the words you mean.
+Blank and whitespace-only lines are skipped; a selection with nothing else in
+it does nothing at all.
 
 The lines are added one after another — Taskwarrior locks its data files, so
 parallel writers would fail — and every line reports itself as it lands. The

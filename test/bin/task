@@ -12,9 +12,19 @@
 #
 # `task show` prints report definitions, which is what the plugin discovers its
 # report names from.
+#
+# Each call writes one `ARGV<TAB>add buy milk` line plus one `ARG<n><TAB>word`
+# line per argument, so specs can tell a quoted word from separate words.
 
 if [ -n "${TW_STUB_LOG:-}" ]; then
 	printf 'ARGV\t%s\n' "$*" >>"$TW_STUB_LOG"
+	# One record per argument, so a spec can tell `add "a b"` from `add a b`:
+	# arguments must stay separate for `task add x project:y` to be applied.
+	i=0
+	for arg in "$@"; do
+		printf 'ARG%d\t%s\n' "$i" "$arg" >>"$TW_STUB_LOG"
+		i=$((i + 1))
+	done
 fi
 if [ -n "${TW_STUB_STDIN:-}" ]; then
 	cat >"$TW_STUB_STDIN" 2>/dev/null || true

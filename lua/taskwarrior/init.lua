@@ -145,17 +145,20 @@ function M.run(args, opts)
 	})
 end
 
---- The trimmed, non-empty lines of the current buffer's `line1`..`line2`.
---- A selection is treated linewise: only the whole lines it touches are used.
+--- The non-empty selected lines, each split into the words of one `task add`
+--- call. A selection is treated linewise: only the whole lines it touches are
+--- used. Each line is tokenized like a typed `:Task add`, so attributes such
+--- as `project:home` or `+work` apply; sent as a single argument they would
+--- stay description text.
 local function selected_lines(line1, line2)
 	local first = math.min(line1, line2)
 	local last = math.max(line1, line2)
 	local lines = vim.api.nvim_buf_get_lines(0, first - 1, last, false)
 	local out = {}
 	for _, line in ipairs(lines) do
-		local text = vim.trim(line)
-		if text ~= "" then
-			out[#out + 1] = text
+		local words = vim.split(vim.trim(line), "%s+", { trimempty = true })
+		if #words > 0 then
+			out[#out + 1] = words
 		end
 	end
 	return out
@@ -172,11 +175,11 @@ function M.add_selection(line1, line2)
 	end
 	local lines = selected_lines(line1, line2)
 	local function add_next(index)
-		local line = lines[index]
-		if not line then
+		local words = lines[index]
+		if not words then
 			return
 		end
-		M.run({ "add", line }, {
+		M.run(vim.list_extend({ "add" }, words), {
 			on_done = function()
 				add_next(index + 1)
 			end,

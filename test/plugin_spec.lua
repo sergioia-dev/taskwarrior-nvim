@@ -63,6 +63,27 @@ local function stub_argv()
 	return argv
 end
 
+--- The argument list of every recorded call, one table per invocation. A
+--- spec that cares whether words stayed apart (`add buy milk` vs one
+--- argument) has to look at these, not at the space-joined `ARGV` lines.
+local function stub_invocations()
+	local ok, lines = pcall(vim.fn.readfile, vim.env.TW_STUB_LOG)
+	if not ok then
+		return {}
+	end
+	local calls, current = {}, nil
+	for _, line in ipairs(lines) do
+		local index, arg = line:match("^ARG(%d+)\t(.*)$")
+		if index == "0" then
+			current = { arg }
+			calls[#calls + 1] = current
+		elseif index and current then
+			current[#current + 1] = arg
+		end
+	end
+	return calls
+end
+
 local function raw_stdin()
 	local handle = io.open(vim.env.TW_STUB_STDIN, "rb")
 	if not handle then
@@ -360,7 +381,7 @@ reset_stub()
 vim.env.TW_STUB_OUT = "Created 1 task.\n"
 local scratch = vim.api.nvim_create_buf(false, true)
 vim.api.nvim_set_current_buf(scratch)
-vim.api.nvim_buf_set_lines(scratch, 0, -1, false, { "buy milk", "   ", "", "write tests" })
+vim.api.nvim_buf_set_lines(scratch, 0, -1, false, { "buy milk", "   ", "", "write tests project:test1" })
 vim.cmd("normal! ggVG\27")
 eq("the selection covers the buffer", vim.fn.line("'>") - vim.fn.line("'<") + 1, 4)
 vim.cmd("'<,'>Task add")
@@ -368,7 +389,12 @@ check("both selected lines were added", vim.wait(5000, function()
 	return #stub_argv() >= 2
 end, 10), vim.inspect(stub_argv()))
 eq("one add per non-empty line, in order", vim.inspect(stub_argv()),
-	vim.inspect({ "add buy milk", "add write tests" }))
+	vim.inspect({ "add buy milk", "add write tests project:test1" }))
+eq("each line is tokenized, so attributes reach taskwarrior", vim.inspect(stub_invocations()),
+	vim.inspect({
+		{ "add", "buy", "milk" },
+		{ "add", "write", "tests", "project:test1" },
+	}))
 --- How many notifications so far mention `text`.
 local function noted(text)
 	local count = 0
@@ -390,6 +416,8 @@ check("the typed add ran", vim.wait(5000, function()
 	return #stub_argv() >= 1
 end, 10), vim.inspect(stub_argv()))
 eq("a typed add stays one command", vim.inspect(stub_argv()), vim.inspect({ "add typed line" }))
+eq("a typed add sends the same word split", vim.inspect(stub_invocations()),
+	vim.inspect({ { "add", "typed", "line" } }))
 check("the typed add reported itself", vim.wait(5000, function()
 	return noted("Created 1 task.") == 1
 end, 10), noted("Created 1 task."))
@@ -403,6 +431,8 @@ check("the ranged add with arguments ran", vim.wait(5000, function()
 end, 10), vim.inspect(stub_argv()))
 eq("a range with extra arguments falls back to the typed command", vim.inspect(stub_argv()),
 	vim.inspect({ "add extra words" }))
+eq("the fallback is tokenized like any typed command", vim.inspect(stub_invocations()),
+	vim.inspect({ { "add", "extra", "words" } }))
 check("the fallback run reported itself", vim.wait(5000, function()
 	return #stub_argv() == 1 and noted("Created 1 task.") == 1
 end, 10), vim.inspect(notifications))
