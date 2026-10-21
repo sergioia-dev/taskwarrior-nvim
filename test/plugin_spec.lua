@@ -354,6 +354,70 @@ task_module.confirm = default_confirm
 vim.env.TW_STUB_EXIT = "0"
 vim.env.TW_STUB_ERR = ""
 
+-- 14 ─ `<range>Task add` adds one task per selected line.
+plugin.close()
+reset_stub()
+vim.env.TW_STUB_OUT = "Created 1 task.\n"
+local scratch = vim.api.nvim_create_buf(false, true)
+vim.api.nvim_set_current_buf(scratch)
+vim.api.nvim_buf_set_lines(scratch, 0, -1, false, { "buy milk", "   ", "", "write tests" })
+vim.cmd("normal! ggVG\27")
+eq("the selection covers the buffer", vim.fn.line("'>") - vim.fn.line("'<") + 1, 4)
+vim.cmd("'<,'>Task add")
+check("both selected lines were added", vim.wait(5000, function()
+	return #stub_argv() >= 2
+end, 10), vim.inspect(stub_argv()))
+eq("one add per non-empty line, in order", vim.inspect(stub_argv()),
+	vim.inspect({ "add buy milk", "add write tests" }))
+--- How many notifications so far mention `text`.
+local function noted(text)
+	local count = 0
+	for _, note in ipairs(notifications) do
+		if note.msg:find(text, 1, true) then
+			count = count + 1
+		end
+	end
+	return count
+end
+check("each added task reports itself", vim.wait(5000, function()
+	return noted("Created 1 task.") == 2
+end, 10), noted("Created 1 task."))
+
+-- A typed description without a range is still a single command.
+reset_stub()
+vim.cmd("Task add typed line")
+check("the typed add ran", vim.wait(5000, function()
+	return #stub_argv() >= 1
+end, 10), vim.inspect(stub_argv()))
+eq("a typed add stays one command", vim.inspect(stub_argv()), vim.inspect({ "add typed line" }))
+check("the typed add reported itself", vim.wait(5000, function()
+	return noted("Created 1 task.") == 1
+end, 10), noted("Created 1 task."))
+
+-- Extra arguments keep the normal behaviour: the typed text wins and the
+-- range is not turned into a selection.
+reset_stub()
+vim.cmd("1,2Task add extra words")
+check("the ranged add with arguments ran", vim.wait(5000, function()
+	return #stub_argv() >= 1
+end, 10), vim.inspect(stub_argv()))
+eq("a range with extra arguments falls back to the typed command", vim.inspect(stub_argv()),
+	vim.inspect({ "add extra words" }))
+check("the fallback run reported itself", vim.wait(5000, function()
+	return #stub_argv() == 1 and noted("Created 1 task.") == 1
+end, 10), vim.inspect(notifications))
+
+-- A selection of blank lines is a silent no-op.
+reset_stub()
+vim.api.nvim_buf_set_lines(scratch, 0, -1, false, { "", "   " })
+vim.cmd("1,2Task add")
+vim.wait(300, function()
+	return #stub_argv() > 0
+end, 10)
+eq("a blank selection adds nothing", vim.inspect(stub_argv()), "{}")
+eq("a blank selection says nothing", #notifications, 0)
+vim.api.nvim_buf_delete(scratch, { force = true })
+
 io.write(string.format("%d checks, %d failures\n", checks, failures))
 if failures > 0 then
 	vim.cmd("cquit 1")

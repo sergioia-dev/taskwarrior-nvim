@@ -22,9 +22,15 @@ end
 
 vim.api.nvim_create_user_command("Task", function(args)
 	local argv = vim.split(vim.trim(args.args), "%s+", { trimempty = true })
+	-- `<range>Task add`, the linewise selection form: one task per line.
+	if args.range > 0 and argv[1] == "add" and #argv == 1 then
+		require("taskwarrior").add_selection(args.line1, args.line2)
+		return
+	end
 	require("taskwarrior").toggle(argv)
 end, {
 	nargs = "*",
+	range = true,
 	desc = "Taskwarrior: render tasks in a split or run a task command",
 	complete = function(arg_lead, cmd_line)
 		local before = cmd_line:sub(1, #cmd_line - #arg_lead)

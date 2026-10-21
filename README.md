@@ -55,12 +55,35 @@ away.
 | `:Task +work`, `:Task project:home`, `:Task 12` | Renders `default_report` with those filters or IDs |
 | `:Task add buy milk`, `:Task 12 done`, `:Task sync`, `:Task undo` | Runs headless, reports the result |
 | `:Task context` | Renders; `:Task context work` runs |
+| `:'<,'>Task add` | Adds one task per selected line (see below) |
+| `:'<,'>Task add …` | Trailing words win: runs the typed command instead |
 
 The arguments are classified, not guessed: a report name, a filter or an ID
 renders, a mutating verb (`add`, `done`, `modify`, `undo`, `sync`, …) runs.
 Repeat the same view to toggle the split closed; a different report re-renders
 in place, without opening a second window. Completion offers your report names
 and the mutating verbs.
+
+## Adding a selection
+
+Select lines in any buffer and run `:'<,'>Task add` to turn each one into a
+task — useful for pasting a list from a note or a chat:
+
+```vim
+:'<,'>Task add
+```
+
+The selection is linewise: a characterwise selection contributes the whole
+lines it touches, never a substring. Each non-empty line becomes its own
+`task add` call, so `+project` and `tag:home` written in a line become
+as usual. Blank and whitespace-only lines are skipped; a selection with nothing
+else in it does nothing at all.
+
+The lines are added one after another — Taskwarrior locks its data files, so
+parallel writers would fail — and every line reports itself as it lands. The
+open list refreshes as it goes. A line that fails does not stop the rest;
+typed words after `add` (`:'<,'>Task add buy milk`) keep the normal one-shot
+behaviour and ignore the range.
 
 ## Keys
 
@@ -110,6 +133,11 @@ effective options.
 - **Rendering is colorless on purpose.** Reports are rendered with
   `rc.color=off` and a width that matches the split, so no escape codes or
   clipped columns end up in the buffer.
+- **The split is chrome-free.** Line numbers (absolute and relative) are off
+  for the list window whatever your global settings say, and a window-local
+  `Taskwarrior` winbar labels the split so it is obvious which window is the
+  task list. The bar belongs to the window, not the buffer, so it survives a
+  reload and never scrolls with the tasks.
 
 ## Limitations
 

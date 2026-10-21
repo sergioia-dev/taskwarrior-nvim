@@ -122,22 +122,67 @@ function M.refresh(opts)
 end
 
 --- Run a command with no window; on success the open list reloads itself.
-function M.run(args)
+--- `opts.on_done(result)` runs after that, which is how `M.add_selection`
+--- chains its commands one after the other.
+function M.run(args, opts)
+	opts = opts or {}
 	if not task.exists() then
 		task.notify_missing()
 		return
 	end
 	task.run(args, {
 		on_done = function(result)
-			if result.code ~= 0 then
-				return
+			if result.code == 0 then
+				watch.absorb()
+				if window.is_open() then
+					M.refresh({ silent = true })
+				end
 			end
-			watch.absorb()
-			if window.is_open() then
-				M.refresh({ silent = true })
+			if opts.on_done then
+				opts.on_done(result)
 			end
 		end,
 	})
+end
+
+--- The trimmed, non-empty lines of the current buffer's `line1`..`line2`.
+--- A selection is treated linewise: only the whole lines it touches are used.
+local function selected_lines(line1, line2)
+	local first = math.min(line1, line2)
+	local last = math.max(line1, line2)
+	local lines = vim.api.nvim_buf_get_lines(0, first - 1, last, false)
+	local out = {}
+	for _, line in ipairs(lines) do
+		local text = vim.trim(line)
+		if text ~= "" then
+			out[#out + 1] = text
+		end
+	end
+	return out
+end
+
+--- Add every non-empty line of the current buffer's `line1`..`line2` as its
+--- own task, e.g. after selecting lines and running `:'<,'>Task add`. The
+--- commands run one after the other: Taskwarrior locks its data files, so two
+--- writers at once would fail. A failed line does not stop the rest.
+function M.add_selection(line1, line2)
+	if not task.exists() then
+		task.notify_missing()
+		return
+	end
+	local lines = selected_lines(line1, line2)
+	local function add_next(index)
+		local line = lines[index]
+		if not line then
+			return
+		end
+		M.run({ "add", line }, {
+			on_done = function()
+				add_next(index + 1)
+			end,
+		})
+	end
+	add_next(1)
 end
 
 --- Entry point for `:Task`: render, or run headless, or toggle.
