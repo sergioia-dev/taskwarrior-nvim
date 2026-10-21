@@ -31,8 +31,10 @@ end
 --- `args`, and at least one so a filter-only command still gets an answer.
 ---
 --- Taskwarrior asks one yes/no question per task it is about to change, so a
---- `:Task 1,2,3 delete` (expanded to `task 1 2 3 delete`) needs three answers.
---- Over-answering is harmless: it stops reading stdin once it is done.
+--- `:Task 1,2,3 delete` (expanded to `task 1 2 3 delete`) needs three answers
+--- when the prompt only offers `yes`/`no`. Over-answering is harmless: it
+--- stops reading stdin once it is done. Taskwarrior 3.x also offers `all`, which
+--- one answer covers every task (see `confirmation_answer`).
 function M.target_count(args)
 	local count = 0
 	for _, arg in ipairs(args) do
@@ -205,22 +207,45 @@ M.confirm = function(question)
 	return vim.fn.confirm(question, "&Yes\n&No", 2) == 1
 end
 
---- The `(yes/no)` question taskwarrior prints when it wants an answer on
---- stdin, or `nil` when `result` carries no such question.
+--- The `(yes/no…)` question taskwarrior prints when it wants an answer on
+--- stdin, or `nil` when `result` carries no such question. The option list is
+--- read off the prompt rather than assumed: taskwarrior 2.x offers two answers
+--- (`(yes/no)`), 3.x offers four (`(yes/no/all/quit)`).
 --- @param result table vim.system result
 --- @return string|nil
 local function confirmation_question(result)
 	local text = (result.stdout or "") .. (result.stderr or "")
 	for _, line in ipairs(vim.split(text, "\n", { plain = true })) do
-		local pos = line:find("(yes/no)", 1, true)
-		if pos then
-			return vim.trim(line:sub(1, pos + 7))
+		local _, stop = line:find("%(yes/no[^)]*%)")
+		if stop then
+			return vim.trim(line:sub(1, stop))
 		end
 	end
 	return nil
 end
---- Remove taskwarrior's `(yes/no)` prompts from `text` (the start of each
---- prompt's line through the closing ")"), one per task it asked about; the
+
+--- Whether the question offers `all`: one answer that covers every remaining
+--- task (taskwarrior 3.x) instead of one answer per task.
+--- @param question string|nil
+--- @return boolean
+local function offers_all(question)
+	return question ~= nil and question:find("%(yes/no/all[^)]*%)") ~= nil
+end
+
+--- The stdin a confirmed run needs: a single `all` covers every task when the
+--- question offers it, otherwise taskwarrior wants one `yes` per targeted task.
+--- @param question string|nil
+--- @param args string[]
+--- @return string
+local function confirmation_answer(question, args)
+	if offers_all(question) then
+		return "all\n"
+	end
+	return string.rep("yes\n", M.target_count(args))
+end
+
+--- Remove taskwarrior's `(yes/no…)` prompts from `text` (the start of each
+--- prompt's line through its closing `)`), one per task it asked about; the
 --- messages that follow each answer are kept. Returns `text` unchanged when
 --- there is no prompt.
 local function strip_yesno(text)
@@ -229,9 +254,9 @@ local function strip_yesno(text)
 	end
 	local kept = {}
 	for _, line in ipairs(vim.split(text, "\n", { plain = true })) do
-		local s = line:find("(yes/no)", 1, true)
-		if s then
-			line = line:sub(s + 8):gsub("^%s+", "")
+		local _, stop = line:find("%(yes/no[^)]*%)")
+		if stop then
+			line = line:sub(stop + 1):gsub("^%s+", "")
 		end
 		kept[#kept + 1] = line
 	end
@@ -251,11 +276,15 @@ function M.run(args, opts)
 	local stdin = M.stdin_for(args)
 	spawn(argv, stdin, function(result)
 		local question = stdin == false and confirmation_question(result) or nil
-		if question and M.confirm(string.format("%s\n%s", table.concat(argv, " "), question)) then
+		-- The dialog brings its own Yes/No buttons, so taskwarrior's option list
+		-- ((yes/no) or (yes/no/all/quit)) is noise there. The answer actually sent
+		-- is chosen from `question` by confirmation_answer.
+		local asked = question and question:gsub("%s*%(yes/no[^)]*%)$", "")
+		if asked and M.confirm(string.format("%s\n%s", table.concat(argv, " "), asked)) then
 			-- The user agreed, so only the outcome of the confirmed run is
 			-- announced. A refused or cancelled question reports the original
 			-- "prevented from running" result instead.
-			spawn(argv, string.rep("yes\n", M.target_count(args)), function(confirmed)
+			spawn(argv, confirmation_answer(question, args), function(confirmed)
 				local cleaned = vim.tbl_extend("force", {}, confirmed)
 				cleaned.stdout = strip_yesno(confirmed.stdout)
 				cleaned.stderr = strip_yesno(confirmed.stderr)

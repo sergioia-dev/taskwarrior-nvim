@@ -78,6 +78,11 @@ confirmation instead of one command per ID. Every ID-based verb works this way
 (`delete`, `done`, `start`, `stop`, `modify`, `duplicate`, `purge`, `edit`,
 `annotate`, `append`, `prepend`, `denotate`).
 
+Taskwarrior asks one question per task it is about to change. The plugin answers
+those itself — one `yes` per ID, or a single `all` on taskwarrior 3.x, whose prompt
+offers `(yes/no/all/quit)` — so you confirm the whole command once in Vim and the
+prompt never reaches the terminal.
+
 Only comma-separated *numeric* ID lists are expanded. A single id, a native
 range (`:Task 1-3 done`), a uuid and a filter (`:Task +work done`) all pass
 through exactly as typed, and the two describe-only verbs (`add`, `log`) are

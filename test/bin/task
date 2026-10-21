@@ -46,7 +46,9 @@ printf '%b' "${TW_STUB_OUT-ID AGE DESCRIPTION
 if [ -n "${TW_STUB_ERR:-}" ]; then
 	printf '%b' "$TW_STUB_ERR" >&2
 fi
-if [ -n "${TW_STUB_STDIN:-}" ] && [ "$(cat "$TW_STUB_STDIN" 2>/dev/null)" = "yes" ]; then
-	exit 0
-fi
+# An accepted answer (taskwarrior 2.x: `yes`, 3.x: `yes` or `all`) means the run
+# went through, so the exit status is cleared for it.
+case "$(cat "$TW_STUB_STDIN" 2>/dev/null)" in
+yes | all) exit 0 ;;
+esac
 exit "${TW_STUB_EXIT:-0}"

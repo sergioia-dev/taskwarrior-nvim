@@ -356,7 +356,8 @@ check("a confirmed run succeeds", notified(function(entry)
 end))
 local confirmed_note = last_notification()
 check("the confirmed notification drops the question", confirmed_note ~= nil and confirmed_note.msg:find("(yes/no)", 1, true) == nil and confirmed_note.msg:find("Deleted 1 task.", 1, true) ~= nil, confirmed_note and confirmed_note.msg)
-check("the question is taskwarrior's own and names the command", asked ~= nil and asked:match("^task delete test\n") ~= nil and asked:match("Delete task 1 'test'%? %(yes/no%)") ~= nil, asked)
+check("the question is taskwarrior's own and names the command", asked ~= nil and asked:match("^task delete test\n") ~= nil and asked:match("Delete task 1 'test'%?$") ~= nil, asked)
+check("the dialog leaves out taskwarrior's option list", asked ~= nil and asked:find("(yes/no", 1, true) == nil, asked)
 eq("the confirmed run got the answer on stdin", raw_stdin(), "yes\n")
 check("the confirmed run repeated the command", #stub_argv() == 2, vim.inspect(stub_argv()))
 
@@ -438,6 +439,37 @@ check("a single-ID delete completes", notified(function(entry)
 end))
 eq("a single ID keeps its own argv", stub_argv()[#stub_argv()], "1 delete")
 eq("a single ID gets one answer", raw_stdin(), "yes\n")
+-- 13g ─ taskwarrior 3.x offers four answers (yes/no/all/quit); a single `all`
+-- covers every task, so a long ID list is asked about once, not once per task.
+local all_question = nil
+local confirm_calls = 0
+task_module.confirm = function(question)
+	confirm_calls = confirm_calls + 1
+	all_question = question
+	return true
+end
+reset_stub()
+vim.env.TW_STUB_EXIT = "1"
+vim.env.TW_STUB_ERR = ""
+vim.env.TW_STUB_OUT = "This command will alter 4 tasks.\n"
+	.. "Delete task 4 'teste'? (yes/no/all/quit) Deleting task 4 'teste'.\n"
+	.. "Deleted 4 tasks.\n"
+vim.cmd("Task 8,9,10,4 delete")
+check("a 3.x question is answered, not reported as a failure", notified(function(entry)
+	return entry.msg:find("Deleted 4 tasks.", 1, true) ~= nil and entry.msg:find("-> exit", 1, true) == nil
+end))
+eq("the user is asked once for the whole command", confirm_calls, 1)
+eq("the 3.x question keeps every ID in one argv", stub_argv()[#stub_argv()], "8 9 10 4 delete")
+eq("one `all` answer covers every task", raw_stdin(), "all\n")
+check("the dialog shows the question without its option list",
+	all_question ~= nil
+		and all_question:match("^task 8 9 10 4 delete\n") ~= nil
+		and all_question:match("Delete task 4 'teste'%?$") ~= nil, all_question)
+local all_note = last_notification()
+check("the 3.x notification drops the prompt",
+	all_note ~= nil
+		and all_note.msg:find("(yes/no", 1, true) == nil
+		and all_note.msg:find("Deleted 4 tasks.", 1, true) ~= nil, all_note and all_note.msg)
 
 task_module.confirm = default_confirm
 vim.env.TW_STUB_OUT = nil
